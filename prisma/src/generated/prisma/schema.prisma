@@ -1,0 +1,165 @@
+generator client {
+  provider        = "prisma-client-js"
+  output          = "./src/generated/prisma"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  apiKey    String   @unique @default(cuid())
+  plan      String   @default("free")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  agents         Agent[]
+  policies       Policy[]
+  actionRequests ActionRequest[]
+  approvals      Approval[]
+  executions     Execution[]
+  auditEvents    AuditEvent[]
+  usageCounters  UsageCounter[]
+
+  @@map("organizations")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  orgId     String
+  clerkId   String   @unique
+  email     String
+  role      String   @default("member")
+  createdAt DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@map("users")
+}
+
+model Agent {
+  id          String   @id @default(cuid())
+  orgId       String
+  name        String
+  description String?
+  apiKey      String   @unique @default(cuid())
+  status      String   @default("active")
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  org            Organization    @relation(fields: [orgId], references: [id])
+  actionRequests ActionRequest[]
+
+  @@map("agents")
+}
+
+model Policy {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  rules     Json
+  priority  Int      @default(0)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  org            Organization    @relation(fields: [orgId], references: [id])
+  actionRequests ActionRequest[]
+
+  @@map("policies")
+}
+
+model ActionRequest {
+  id         String   @id @default(cuid())
+  orgId      String
+  agentId    String
+  actionType String
+  payload    Json
+  riskScore  Float    @default(0)
+  decision   String   @default("pending")
+  policyId   String?
+  traceId    String   @default(cuid())
+  createdAt  DateTime @default(now())
+
+  org         Organization @relation(fields: [orgId], references: [id])
+  agent       Agent        @relation(fields: [agentId], references: [id])
+  policy      Policy?      @relation(fields: [policyId], references: [id])
+  approval    Approval?
+  execution   Execution?
+  auditEvents AuditEvent[]
+
+  @@map("action_requests")
+}
+
+model Approval {
+  id              String    @id @default(cuid())
+  actionRequestId String    @unique
+  orgId           String
+  requestedBy     String
+  assignedTo      String?
+  status          String    @default("pending")
+  decidedAt       DateTime?
+  reason          String?
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  org           Organization  @relation(fields: [orgId], references: [id])
+  actionRequest ActionRequest @relation(fields: [actionRequestId], references: [id])
+
+  @@map("approvals")
+}
+
+model Execution {
+  id              String    @id @default(cuid())
+  actionRequestId String    @unique
+  orgId           String
+  status          String    @default("pending")
+  result          Json?
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  error           String?
+
+  org           Organization  @relation(fields: [orgId], references: [id])
+  actionRequest ActionRequest @relation(fields: [actionRequestId], references: [id])
+
+  @@map("executions")
+}
+
+model AuditEvent {
+  id              String   @id @default(cuid())
+  orgId           String
+  entityType      String
+  entityId        String
+  eventType       String
+  actorId         String
+  actorType       String
+  payload         Json?
+  traceId         String
+  actionRequestId String?
+  createdAt       DateTime @default(now())
+
+  org           Organization   @relation(fields: [orgId], references: [id])
+  actionRequest ActionRequest? @relation(fields: [actionRequestId], references: [id])
+
+  @@map("audit_events")
+}
+
+model UsageCounter {
+  id              String   @id @default(cuid())
+  orgId           String
+  period          String
+  actionsChecked  Int      @default(0)
+  actionsAllowed  Int      @default(0)
+  actionsApproved Int      @default(0)
+  actionsDenied   Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, period])
+  @@map("usage_counters")
+}
