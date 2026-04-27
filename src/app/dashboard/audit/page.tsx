@@ -10,13 +10,29 @@ const eventColor: Record<string, string> = {
   refund_failed: 'bg-red-900 text-red-400',
 }
 
-export default async function AuditPage() {
+interface Props {
+  searchParams: Promise<{ eventType?: string; actorType?: string; traceId?: string }>
+}
+
+export default async function AuditPage({ searchParams }: Props) {
+  const filters = await searchParams
+  const { eventType, actorType, traceId } = filters
+
   const org = await prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } })
-  const events = org ? await prisma.auditEvent.findMany({
-    where: { orgId: org.id },
-    orderBy: { createdAt: 'desc' },
-    take: 100,
-  }) : []
+
+  const where = {
+    ...(org ? { orgId: org.id } : {}),
+    ...(eventType ? { eventType } : {}),
+    ...(actorType ? { actorType } : {}),
+    ...(traceId ? { traceId } : {}),
+  }
+
+  const events = org
+    ? await prisma.auditEvent.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 })
+    : []
+
+  const eventTypes = ['access_check', 'approval_requested', 'approval_approved', 'approval_rejected', 'refund_executed', 'refund_failed']
+  const actorTypes = ['agent', 'user', 'system']
 
   return (
     <div>
@@ -28,10 +44,46 @@ export default async function AuditPage() {
         <div className="text-xs text-gray-600">{events.length} events</div>
       </div>
 
+      {/* Filters */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 flex flex-wrap gap-4 items-end">
+        <div>
+          <div className="text-xs text-gray-500 mb-1">Event Type</div>
+          <div className="flex flex-wrap gap-1">
+            <a href="/dashboard/audit" className={`px-2 py-1 rounded text-xs ${!eventType ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>All</a>
+            {eventTypes.map(et => (
+              <a key={et} href={`/dashboard/audit?eventType=${et}${actorType ? `&actorType=${actorType}` : ''}`}
+                className={`px-2 py-1 rounded text-xs ${eventType === et ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                {et.replace(/_/g, ' ')}
+              </a>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-gray-500 mb-1">Actor Type</div>
+          <div className="flex gap-1">
+            <a href={`/dashboard/audit${eventType ? `?eventType=${eventType}` : ''}`}
+              className={`px-2 py-1 rounded text-xs ${!actorType ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>All</a>
+            {actorTypes.map(at => (
+              <a key={at} href={`/dashboard/audit?actorType=${at}${eventType ? `&eventType=${eventType}` : ''}`}
+                className={`px-2 py-1 rounded text-xs ${actorType === at ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                {at}
+              </a>
+            ))}
+          </div>
+        </div>
+        {traceId && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-indigo-400 font-mono">trace: {traceId}</span>
+            <a href="/dashboard/audit" className="text-xs text-gray-600 hover:text-gray-400">✕ clear</a>
+          </div>
+        )}
+      </div>
+
       {events.length === 0 ? (
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
           <div className="text-4xl mb-3">🔍</div>
-          <p className="text-gray-400">No audit events yet.</p>
+          <p className="text-gray-400">No audit events match the current filters.</p>
+          <a href="/dashboard/audit" className="text-indigo-400 text-sm mt-2 block">Clear filters</a>
         </div>
       ) : (
         <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
@@ -48,7 +100,10 @@ export default async function AuditPage() {
                   {' → '}
                   <span>{event.entityType}</span>
                 </div>
-                <div className="text-xs text-gray-600 mt-0.5 font-mono">trace: {event.traceId.slice(0, 20)}…</div>
+                <a href={`/dashboard/audit?traceId=${event.traceId}`}
+                  className="text-xs text-gray-600 hover:text-indigo-400 mt-0.5 font-mono block">
+                  trace: {event.traceId.slice(0, 24)}…
+                </a>
               </div>
               <div className="text-xs text-gray-600 flex-shrink-0">
                 {new Date(event.createdAt).toLocaleString()}
